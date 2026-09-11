@@ -299,7 +299,7 @@ function deriveCoreStats(input: StatDerivationInput): CoreStats {
 결과 집계: 승률(몬테카를로 N회), 부위별 피해, 피니시 타입, 타임라인
 ```
 
-**재현성**: 고정 시드 + 결정론적 RNG(Math.seedrandom) → **동일 입력/시드에서 동일 결과 보장** (Matter.js 부동소수점 미세 차이 허용)
+**재현성**: 고정 시드 + 결정론적 RNG(seedrandom) → **동일 입력/시드에서 비트 단위 재현성 목표** (Matter.js 부동소수점 연산 순서 비결정론으로 미세 차이 발생 가능, 허용 오차 ±0.001% 문서화). 완전 결정론 필요 시 별도 고정소수점 물리 엔진 고려.
 
 ### 4.5 데미지 계산 공식 (차원 일관성 보장)
 
@@ -316,24 +316,28 @@ pressure = peakForce / contactArea
 energy = impulse × avgVelocity = peakForce × executionTime × 0.5 × peakVelocity
 단위: J
 
-[4] 조직 손상도 (각 조직별)
-tissueDamage = min(1, (pressure / tissue.tensileStrength) ^ pressureExponent 
-                 + (energy / tissue.fractureEnergy) ^ energyExponent)
+[4] 조직 손상도 (각 조직별) — 에너지 밀도(J/m³) 기준
+tissueDamage = min(1, 
+    (pressure / tissue.tensileStrength) ^ pressureExponent 
+  + (energy / (tissue.fractureEnergy × tissue.thickness × contactArea)) ^ energyExponent)
 - pressureExponent = 1.5 (비선형)
 - energyExponent = 1.2
-- thickness 보정: damage *= (referenceThickness / actualThickness) ^ 0.5
+- fractureEnergy 단위: J/m², 두께: m, 접촉면적: m² → energy / (J/m² × m × m²) = 무차원
 
 [5] 골절 확률 (Weibull)
-P_fracture = 1 - exp(-(energy / η) ^ β)
-- η (척도): bone.fractureEnergy × thickness
+P_fracture = 1 - exp(-(strainEnergyDensity / η) ^ β)
+- η (척도): bone.fractureEnergy / bone.thickness  (J/m³)
 - β (형상): 2.5 (피질골), 1.8 (해면골)
+- strainEnergyDensity = energy / (volume) ≈ energy / (contactArea × thickness)
 
 [6] 뇌진탕 확률 (HIC 기반)
-HIC = max[(t2-t1) * (1/(t2-t1) ∫a(t)dt)^2.5] over 15ms window
+HIC = max[(t2 - t1) * ( (1/(t2-t1)) * ∫a(t)dt )^2.5] over 15ms window
+   = max[ (t2-t1)^(-1.5) * (∫a(t)dt)^2.5 ]
 P_concussion = 1 / (1 + exp(-(HIC - 700) / 150))
 
 [7] 내장 파열 확률
-P_rupture = 1 / (1 + exp(-(energy - organ.ruptureThreshold) / (organ.ruptureThreshold * 0.2)))
+P_rupture = 1 / (1 + exp(-(pressure - organ.criticalPressure) / (organ.criticalPressure * 0.2)))
+- pressure 단위: MPa, criticalPressure 단위: MPa
 
 [8] 총 데미지 (0-100 스케일)
 totalDamage = Σ(partDamage × partWeight) × defenseMultiplier
@@ -341,7 +345,11 @@ totalDamage = Σ(partDamage × partWeight) × defenseMultiplier
 - defenseMultiplier: 블럭/패리/회피 시 0.1~0.5
 ```
 
-**내구도(Durability) 단위 통일**: 모든 조직 내구도를 **MPa(압력)**와 **J/m²(파괴에너지)**로 통일
+**내구도(Durability) 단위 통일**: 
+- 인장/전단/압축 강도: **MPa** (N/mm²)
+- 파괴 에너지: **J/m²** (단위 면적당 에너지)
+- 두께: **mm**
+- 임계 압력(장기): **MPa**
 
 ### 4.6 종료 판정
 | 타입 | 조건 |
