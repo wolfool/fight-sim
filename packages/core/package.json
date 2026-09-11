@@ -1,0 +1,25 @@
+{
+  "name": "@fight-sim/core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint \"**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "matter-js": "^0.20.0",
+    "seedrandom": "^3.0.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/matter-js": "^0.19.7",
+    "@types/seedrandom": "^3.0.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
