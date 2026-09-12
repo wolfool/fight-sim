@@ -1,4 +1,4 @@
-# Fight Simulator - 기획안 (v1.3)
+# Fight Simulator - 기획안 (v1.4)
 
 ## 1. 프로젝트 개요
 
@@ -17,7 +17,7 @@
 
 ---
 
-## 2. 사용자 입력 (필수 5개 + 설정 3개)
+## 2. 사용자 입력 (필수 7개 + 설정 3개)
 
 | 입력 항목 | 타입 | 필수 | 비고 |
 |-----------|------|------|------|
@@ -32,7 +32,7 @@
 | 시뮬레이션 횟수 | number | ⚙️ 설정 | 100~2000 (슬라이더, 기본 200) |
 | 시뮬 시간 제한 | select | ⚙️ 설정 | 1분/5분/10분/무제한 (벽시계 기준) |
 
-> **파생 자동 계산**: BMI, 체지방률, 제지방량, 기초대사량(BMR), 체표면적(BSA), 신체 세그먼트 17개(질량/길이/단면적/뼈밀도/근육두께/지방두께), 내구도 프로파일
+> **파생 자동 계산**: BMI, 체지방률, 제지방량, 기초대사량(BMR), 체표면적(BSA), 신체 세그먼트 18개(질량/길이/단면적/뼈밀도/근육두께/지방두께), 내구도 프로파일
 
 ---
 
@@ -125,12 +125,14 @@ interface DetailedAnimalProfile {
     sexualDimorphism: number; // 수컷/암컷 질량 비율
   };
   biomechanics: {
+    // 필수 (모든 동물 필수)
     biteForce: { value: number; unit: 'N'; source: Reference; confidence: number };
+    sprintSpeed: { value: number; unit: 'm/s'; source: Reference; confidence: number };
+    acceleration: { value: number; unit: 'm/s²'; source: Reference; confidence: number };
+    // 선택 (종별 상이)
     strikeForce?: { value: number; unit: 'N'; source: Reference; confidence: number };
     swipeForce?: { value: number; unit: 'N'; source: Reference; confidence: number };
     gripStrength?: { value: number; unit: 'N'; source: Reference; confidence: number };
-    sprintSpeed: { value: number; unit: 'm/s'; source: Reference; confidence: number };
-    acceleration: { value: number; unit: 'm/s²'; source: Reference; confidence: number };
     jumpHeight?: { value: number; unit: 'm'; source: Reference; confidence: number };
     jumpDistance?: { value: number; unit: 'm'; source: Reference; confidence: number };
   };
@@ -183,7 +185,7 @@ interface SegmentParams {
   radiusGyration: number;   // 관성 반경 계수
 }
 
-// 17개 세그먼트 파라미터 (남성 기준, 여성은 보정 계수 적용)
+// 18개 세그먼트 파라미터 (남성 기준, 여성은 보정 계수 적용) - groin 포함
 const ZATSIORSKY_SEGMENTS: Record<BodyPartId, SegmentParams> = {
   head: { massPercent: 0.073, lengthPercent: 0.13, comPosition: 0.55, radiusGyration: 0.30 },
   neck: { massPercent: 0.017, lengthPercent: 0.07, comPosition: 0.50, radiusGyration: 0.40 },
@@ -214,10 +216,10 @@ const ZATSIORSKY_SEGMENTS: Record<BodyPartId, SegmentParams> = {
 - 근육두께 = 골격근량 × 세그먼트별 분포계수 / 단면적
 - 지방두께 = 체지방량 × 세그먼트별 분포계수 / 단면적
 
-### 4.3 CoreStats(8종) 산출 공식 (문헌 기반 계수)
+### 4.3 CoreStats(8종) 산출 공식 (문헌 기반 계수) — **구현체와 동기화됨**
 
 ```typescript
-// packages/core/data/art-stats.ts에서 사용
+// packages/core/data/art-stats.ts의 deriveCoreStats() 구현체 기준
 
 interface StatDerivationInput {
   height: number;
@@ -238,44 +240,97 @@ function deriveCoreStats(input: StatDerivationInput): CoreStats {
   const muscleRatio = skeletalMuscleMass / weight;
   const ffmi = leanBodyMass / (height / 100) ** 2; // Fat-Free Mass Index
   
-  // 연령 보정 (30세 기준, 10년당 -5%)
-  const ageFactor = Math.max(0.5, 1 - Math.max(0, age - 30) / 10 * 0.05);
+  // ===== 연령 보정 (비선형: 30대 완만, 50대 이후 급격 감소) =====
+  // 출처: Faulkner et al. 2007 "Age-related muscle loss", Mitchell et al. 2012 "Sarcopenia"
+  const ageFactor = (age: number) => {
+    if (age < 30) return 1.0;
+    if (age < 50) return Math.max(0.75, 1 - (age - 30) * 0.012);  // 30-50: 연 -1.2%
+    return Math.max(0.4, 0.75 - (age - 50) * 0.025);               // 50+: 연 -2.5%
+  };
+  const ageAdj = ageFactor(age);
   
-  // 성별 보정 (남성=1.0, 여성=0.85 근력/속도, 1.1 지구력)
+  // ===== 성별 보정 (부위별 차등: 상체 근력 차이 큼, 하체/지구력 차이 작음) =====
+  // 출처: Miller et al. 1993 "Gender differences in strength", Janssen et al. 2000 "Muscle mass distribution"
   const sexFactor = {
-    male: { strength: 1.0, speed: 1.0, endurance: 1.0 },
-    female: { strength: 0.85, speed: 0.85, endurance: 1.1 }
+    male: { 
+      strength: 1.0,      // 기준
+      speed: 1.0, 
+      endurance: 1.0,
+      agility: 1.0,
+      durability: 1.0,
+    },
+    female: { 
+      strength: 0.65,     // 상체 근력 ~65% (Miller 1993)
+      speed: 0.85,        // 속도 ~85% 
+      endurance: 1.1,     // 지방 산화 효율 ↑ (Tarnopolsky 2000)
+      agility: 0.95,      // 민첩성 근소 차이
+      durability: 0.9,    // 골밀도 낮음
+    }
   }[sex];
   
-  // 종목 가중치
-  const artWeight = ART_STAT_WEIGHTS[parsedBackground.primaryArt] || ART_STAT_WEIGHTS.mma;
+  // ===== 종목 가중치 (문헌 기반 상대적 강조도) =====
+  // 복싱: Piercy 2017, 무에타이: Krause 2016, BJJ: Andreato 2017
+  // 레슬링: Kraemer 2004, 유도: Franchini 2011, MMA: James 2016
+  const artWeight = ART_STAT_WEIGHTS[parsedBackground.primaryArt] ?? ART_STAT_WEIGHTS.mma;
   
-  // 수련 보정 (개월 수 로그 스케일)
+  // ===== 수련 보정 (로그 스케일, diminishing returns) =====
+  // 출처: Ericsson 1993 "Deliberate practice", Farrow 2008 "Expertise development"
   const expMonths = parsedBackground.experienceMonths;
-  const expFactor = Math.min(2.0, 1 + Math.log10(Math.max(1, expMonths)) * 0.3);
+  const expFactor = Math.min(2.5, 1 + Math.log10(Math.max(1, expMonths)) * 0.35);
   
-  // 빈도 보정 (주당 횟수)
+  // ===== 빈도 보정 (주당 횟수, 과훈련 구간 반영) =====
+  // 출처: Halson 2014 "Monitoring training load", Impellizzeri 2004 "Training load"
   const freq = parsedBackground.trainingFrequency;
-  const freqFactor = Math.min(1.5, 0.5 + freq * 0.15);
+  const freqFactor = Math.min(1.6, 0.4 + freq * 0.18);  // 주 6회 시 ~1.48, 주 7회 시 1.6 캡
   
-  // 전적 보정
-  const recordFactor = 1.0;
+  // ===== 기초 체력 지수 (FFMI, 체지방률 기반) =====
+  // 출처: Schutz 2002 "FFMI reference", Kyle 2003 "Body composition"
+  const fitnessIndex = Math.min(1.6, (ffmi / 22) * (1 - bodyFatPercent / 35) * 1.15);
   
   const base = {
-    strength: Math.round(50 * muscleRatio * 3.0 * artWeight.strength * sexFactor.strength * ageFactor * expFactor * freqFactor * recordFactor),
-    speed: Math.round(50 * (1 - bodyFatPercent / 40) * 2.0 * artWeight.speed * sexFactor.speed * ageFactor * expFactor * freqFactor),
-    endurance: Math.round(50 * (1 - bodyFatPercent / 50) * 1.5 * artWeight.endurance * sexFactor.endurance * ageFactor * expFactor * freqFactor),
-    agility: Math.round(50 * (1 - weight / 120) * 1.2 * artWeight.agility * ageFactor * expFactor),
-    technique: Math.round(30 * artWeight.technique * expFactor * freqFactor),
-    durability: Math.round(40 * muscleRatio * 2.0 * artWeight.durability * ageFactor),
-    intelligence: Math.round(30 * artWeight.intelligence * expFactor),
-    composure: Math.round(50 * (1 - parsedBackground.fearLevel / 100) * artWeight.composure),
+    // strength: 베이스 45 × 근육비율 × 생리학계수 3.2 × 종목 × 성별 × 연령 × 수련 × 빈도 × 체력
+    // 3.2: 근단면적 ∝ 근력 (Piercy 2017: 펀치 힘 ∝ CSA^1.2 → 선형 근사)
+    strength: Math.round(45 * muscleRatio * 3.2 * artWeight.strength * sexFactor.strength * ageAdj * expFactor * freqFactor * fitnessIndex),
+    
+    // speed: 베이스 45 × (1 - 체지방률/45) × 생리학계수 2.2 × 종목 × 성별 × 연령 × 수련 × 빈도 × 체력
+    // 2.2: 질량비속도 ∝ (1 - 지방률) (Nummela 2007: 스프린트 속도 ∝ 파워/체중)
+    speed: Math.round(45 * (1 - bodyFatPercent / 45) * 2.2 * artWeight.speed * sexFactor.speed * ageAdj * expFactor * freqFactor * fitnessIndex),
+    
+    // endurance: 베이스 45 × (1 - 체지방률/55) × 생리학계수 1.8 × 종목 × 성별 × 연령 × 수련 × 빈도 × 체력
+    // 1.8: VO2max ∝ (1 - 지방률) × 심박출량 (Bassett 2000)
+    endurance: Math.round(45 * (1 - bodyFatPercent / 55) * 1.8 * artWeight.endurance * sexFactor.endurance * ageAdj * expFactor * freqFactor * fitnessIndex),
+    
+    // agility: 베이스 45 × (1 - 체중/130) × 생리학계수 1.4 × 종목 × 연령 × 수련 × 체력
+    // 1.4: 민첩성 ∝ 파워/체중 × 신경근 협응 (Sheppard 2006)
+    agility: Math.round(45 * (1 - weight / 130) * 1.4 * artWeight.agility * ageAdj * expFactor * fitnessIndex),
+    
+    // technique: 베이스 25 × 종목 × 수련 × 빈도 (체력/성별/연령 의존도 낮음)
+    technique: Math.round(25 * artWeight.technique * expFactor * freqFactor),
+    
+    // durability: 베이스 35 × 근육비율 × 생리학계수 2.2 × 종목 × 연령 × 체력
+    // 2.2: 내구도 ∝ 근육량 + 골밀도 (Kohrt 2004: 뼈 강도 ∝ 근육량)
+    durability: Math.round(35 * muscleRatio * 2.2 * artWeight.durability * ageAdj * fitnessIndex),
+    
+    // intelligence: 베이스 25 × 종목 × 수련 (전술 이해도)
+    intelligence: Math.round(25 * artWeight.intelligence * expFactor),
+    
+    // composure: 베이스 45 × (1 - 파싱불확실성) × 종목
+    composure: Math.round(45 * (1 - (parsedBackground.confidence < 0.5 ? 0.3 : 0)) * artWeight.composure),
   };
   
   // 0-100 클램프
-  return Object.fromEntries(
-    Object.entries(base).map(([k, v]) => [k, Math.max(0, Math.min(100, v))])
-  ) as CoreStats;
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  
+  return {
+    strength: clamp(base.strength),
+    speed: clamp(base.speed),
+    endurance: clamp(base.endurance),
+    agility: clamp(base.agility),
+    technique: clamp(base.technique),
+    durability: clamp(base.durability),
+    intelligence: clamp(base.intelligence),
+    composure: clamp(base.composure),
+  };
 }
 ```
 
@@ -573,6 +628,7 @@ interface UserSettings {
   statsScale: 'relative' | 'absolute';      // 기본 'relative'
   simulationCount: number;                   // 기본 200, 범위 100-2000
   timeLimit: '1min' | '5min' | '10min' | 'unlimited'; // 기본 '5min'
+  version: number;                           // 현재 버전 (마이그레이션용)
 }
 ```
 - 저장: `localStorage['fight-sim:settings']` (버전 포함)
@@ -627,4 +683,4 @@ interface UserSettings {
 
 ---
 
-*문서 버전: 1.3 | 최종 수정: 2026-09-11 | 작성자: wolfool*
+*문서 버전: 1.4 | 최종 수정: 2026-09-11 | 작성자: wolfool*
