@@ -131,11 +131,14 @@ export class BackgroundParser {
   private extractDurations(): Array<{ value: number; unit: string; confidence: number }> {
     const results: Array<{ value: number; unit: string; confidence: number }> = [];
     
-    for (const pattern of PATTERNS.duration) {
+for (const pattern of PATTERNS.duration) {
       const matches = this.input.matchAll(pattern);
       for (const match of matches) {
-        const value = parseFloat(match[1]);
-        const unit = match[2].toLowerCase();
+        const valueStr = match[1];
+        const unitStr = match[2];
+        if (!valueStr || !unitStr) continue;
+        const value = parseFloat(valueStr);
+        const unit = unitStr.toLowerCase();
         
         let months: number;
         switch (unit) {
@@ -166,16 +169,18 @@ export class BackgroundParser {
   private extractFrequencies(): Array<{ value: number; confidence: number }> {
     const results: Array<{ value: number; confidence: number }> = [];
     
-    for (const pattern of PATTERNS.frequency) {
+for (const pattern of PATTERNS.frequency) {
       const matches = this.input.matchAll(pattern);
       for (const match of matches) {
         let value: number;
-        if (match[1] && match[2] && !isNaN(parseInt(match[1]))) {
+        const m1 = match[1];
+        const m2 = match[2];
+        if (m1 && m2 && !isNaN(parseInt(m1))) {
           // "주 3회" 형태
-          value = parseInt(match[2] || match[1]);
-        } else if (match[1] && !isNaN(parseInt(match[1]))) {
+          value = parseInt(m2 || m1);
+        } else if (m1 && !isNaN(parseInt(m1))) {
           // "주당 3회" 형태
-          value = parseInt(match[1]);
+          value = parseInt(m1);
         } else {
           continue;
         }

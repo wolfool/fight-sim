@@ -4,6 +4,21 @@
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./parser/BackgroundParser": "./src/parser/BackgroundParser.ts",
+    "./data/schemas": "./src/data/schemas.ts",
+    "./data/art-stats": "./src/data/art-stats.ts",
+    "./data/anchor-values": "./src/data/anchor-values.ts",
+    "./data/body-segments": "./src/data/body-segments.ts",
+    "./data/animal-traits": "./src/data/animal-traits.ts",
+    "./settings/SettingsManager": "./src/settings/SettingsManager.ts",
+    "./physics/PhysicsWorld": "./src/physics/PhysicsWorld.ts",
+    "./engine": "./src/engine/index.ts",
+    "./physiology": "./src/physiology/index.ts",
+    "./validation": "./src/validation/index.ts",
+    "./simulation": "./src/simulation/index.ts"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

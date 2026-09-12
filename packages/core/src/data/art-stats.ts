@@ -22,6 +22,16 @@ export interface ArtStatWeights {
 }
 
 export const ART_STAT_WEIGHTS: Record<string, ArtStatWeights> = {
+  mma: {
+    strength: 1.0,
+    speed: 1.0,
+    endurance: 1.0,
+    agility: 1.0,
+    technique: 1.0,
+    durability: 1.0,
+    intelligence: 1.0,
+    composure: 1.0,
+  },
   boxing: {
     strength: 1.05,
     speed: 1.15,
@@ -92,17 +102,7 @@ export const ART_STAT_WEIGHTS: Record<string, ArtStatWeights> = {
     intelligence: 0.9,
     composure: 0.95,
   },
-  mma: {
-    strength: 1.0,
-    speed: 1.0,
-    endurance: 1.0,
-    agility: 1.0,
-    technique: 1.0,
-    durability: 1.0,
-    intelligence: 1.0,
-    composure: 1.0,
-  },
-  sambo: {
+sambo: {
     strength: 1.15,
     speed: 0.95,
     endurance: 1.1,
@@ -268,7 +268,7 @@ export function deriveCoreStats(input: StatDerivationInput): CoreStats {
   // ===== 종목 가중치 (문헌 기반 상대적 강조도) =====
   // 복싱: Piercy 2017, 무에타이: Krause 2016, BJJ: Andreato 2017
   // 레슬링: Kraemer 2004, 유도: Franchini 2011, MMA: James 2016
-  const artWeight = ART_STAT_WEIGHTS[parsedBackground.primaryArt] || ART_STAT_WEIGHTS.mma;
+  const artWeight = (ART_STAT_WEIGHTS[parsedBackground.primaryArt] ?? ART_STAT_WEIGHTS.mma) as ArtStatWeights;
   
   // ===== 수련 보정 (로그 스케일, diminishing returns) =====
   // 출처: Ericsson 1993 "Deliberate practice", Farrow 2008 "Expertise development"
@@ -403,7 +403,7 @@ export const ART_TECHNIQUE_MAP: Record<string, string[]> = {
 };
 
 export function getRecommendedTechniques(primaryArt: string, experienceMonths: number): string[] {
-  const base = ART_TECHNIQUE_MAP[primaryArt] || ART_TECHNIQUE_MAP.mma;
+  const base = (ART_TECHNIQUE_MAP[primaryArt] ?? ART_TECHNIQUE_MAP.mma) as string[];
   // 경력에 따라 고급 기술 추가
   if (experienceMonths >= 24) {
     return base; // 모든 기술 해금
