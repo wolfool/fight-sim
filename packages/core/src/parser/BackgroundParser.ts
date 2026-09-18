@@ -30,6 +30,7 @@ const PATTERNS = {
     /(브라질리안\s*주짓수|브라질\s*주짓수)/gi,
     /(주짓수|BJJ|bjj)/gi,
     /(무에타이|무에\s*타이|Muay\s*Thai|muaythai)/gi,
+    /(타이복싱)/gi,
     /(킥복싱|킥\s*복싱|Kick\s*boxing)/gi,
     /(태권도|Taekwondo|TKD|tkd)/gi,
     /(유도|Judo|judo)/gi,
@@ -52,8 +53,10 @@ const PATTERNS = {
   
   // 빈도 (주당 횟수)
   frequency: [
-    /(주|주당|매주|weekly)\s*(\d+)\s*(회|번|times?)/gi,
+    /(?<!격)(주|주당|매주|weekly)\s*(\d+)\s*(?:[-~]\s*(\d+)\s*)?(회|번|times?)/gi,
     /(\d+)\s*(회|번)\s*(주|주당|매주|weekly)/gi,
+    /(\d+)\s*times?\s*(?:a|per)\s*(?:week|wk)/gi,
+    /(\d+)\s*주일\s*(?:에|당)\s*(\d+)\s*(회|번)/gi,
     /(격주|biweekly)\s*(\d+)/gi,
     /(매일|daily)\s*(\d+)/gi,
   ],
@@ -92,14 +95,11 @@ export class BackgroundParser {
   // ============================================
   
   private extractArts(): Array<{ art: string; confidence: number }> {
-    const results: Array<{ art: string; confidence: number }> = [];
+    const results: Array<{ art: string; raw: string; confidence: number }> = [];
     const matched = new Set<string>();
     
-    // 우선순위 순서로 매칭 (긴 것부터)
     const sortedPatterns = [...PATTERNS.arts].sort((a, b) => {
-      const aStr = a.source.length;
-      const bStr = b.source.length;
-      return bStr - aStr;
+      return b.source.length - a.source.length;
     });
     
     for (const pattern of sortedPatterns) {
@@ -109,19 +109,26 @@ export class BackgroundParser {
         const normalized = normalizeArt(raw);
         if (!matched.has(normalized)) {
           matched.add(normalized);
-          // 매칭 길이 기반 신뢰도
           const confidence = Math.min(0.95, 0.6 + raw.length * 0.02);
-          results.push({ art: normalized, confidence });
+          results.push({ art: normalized, raw, confidence });
         }
       }
     }
     
-    // 기본값
-    if (results.length === 0) {
-      results.push({ art: 'mma', confidence: 0.3 });
+    // 포함관계 중복 제거 ("킥복싱" 안의 "복싱" 등)
+    const kept = results.filter(
+      (r1) => !results.some(
+        (r2) => r2 !== r1 && r2.raw.includes(r1.raw) && r2.raw !== r1.raw
+      )
+    );
+    
+    if (kept.length === 0) {
+      return [{ art: 'mma', confidence: 0.3 }];
     }
     
-    return results.sort((a, b) => b.confidence - a.confidence);
+    return kept
+      .map(({ art, confidence }) => ({ art, confidence }))
+      .sort((a, b) => b.confidence - a.confidence);
   }
   
   // ============================================
@@ -169,21 +176,17 @@ for (const pattern of PATTERNS.duration) {
   private extractFrequencies(): Array<{ value: number; confidence: number }> {
     const results: Array<{ value: number; confidence: number }> = [];
     
-for (const pattern of PATTERNS.frequency) {
+    for (const pattern of PATTERNS.frequency) {
       const matches = this.input.matchAll(pattern);
       for (const match of matches) {
-        let value: number;
-        const m1 = match[1];
-        const m2 = match[2];
-        if (m1 && m2 && !isNaN(parseInt(m1))) {
-          // "주 3회" 형태
-          value = parseInt(m2 || m1);
-        } else if (m1 && !isNaN(parseInt(m1))) {
-          // "주당 3회" 형태
-          value = parseInt(m1);
-        } else {
-          continue;
+        let value = NaN;
+        for (const g of match.slice(1)) {
+          if (g && /^\d+$/.test(g)) {
+            const n = parseInt(g, 10);
+            if (Number.isNaN(value) || n > value) value = n;
+          }
         }
+        if (Number.isNaN(value)) continue;
         
         // "격주" 처리
         if (match[0].includes('격주') || match[0].includes('biweekly')) {
@@ -196,6 +199,11 @@ for (const pattern of PATTERNS.frequency) {
         
         results.push({ value: Math.min(14, value), confidence: 0.8 });
       }
+    }
+    
+    // "매일" 단독 표기 (횟수 없음) → 주 7회
+    if (results.length === 0 && /(매일|daily)/i.test(this.input)) {
+      results.push({ value: 7, confidence: 0.7 });
     }
     
     return results;

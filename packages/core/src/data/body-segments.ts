@@ -19,7 +19,7 @@ export interface SegmentParams {
   };
 }
 
-// 18개 세그먼트 파라미터 (Zatsiorsky 남성 데이터 + groin)
+// 19개 세그먼트 파라미터 (Zatsiorsky 남성 데이터: torso 4분할 18개 + groin)
 // 여성은 massPercent × 0.95, lengthPercent × 0.98 보정 적용
 export const ZATSIORSKY_SEGMENTS: Record<BodyPartId, SegmentParams> = {
   head: {

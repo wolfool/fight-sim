@@ -27,6 +27,14 @@ out/
 build
 dist
 
+# In-place TS build artifacts (tsc outputs to dist/ only)
+packages/core/src/**/*.js
+packages/core/src/**/*.js.map
+packages/core/src/**/*.d.ts
+packages/core/src/**/*.d.ts.map
+apps/standalone/.build/
+apps/standalone/dist/
+
 
 # Debug
 npm-debug.log*

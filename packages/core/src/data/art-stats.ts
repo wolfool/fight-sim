@@ -201,12 +201,19 @@ export const ART_ALIASES: Record<string, string> = {
 
 export function normalizeArt(input: string): string {
   const lower = input.toLowerCase().trim();
-  for (const [alias, standard] of Object.entries(ART_ALIASES)) {
-    if (lower.includes(alias.toLowerCase())) {
+  const compact = lower.replace(/\s+/g, '');
+
+  if (ART_ALIASES[lower]) return ART_ALIASES[lower];
+  if (ART_ALIASES[compact]) return ART_ALIASES[compact];
+
+  const entries = Object.entries(ART_ALIASES).sort((a, b) => b[0].length - a[0].length);
+  for (const [alias, standard] of entries) {
+    const aliasLower = alias.toLowerCase();
+    if (lower.includes(aliasLower) || compact.includes(aliasLower.replace(/\s+/g, ''))) {
       return standard;
     }
   }
-  return 'mma'; // 기본값
+  return 'mma';
 }
 
 // ============================================

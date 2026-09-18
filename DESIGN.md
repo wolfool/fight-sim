@@ -1,4 +1,4 @@
-# Fight Simulator - 기획안 (v1.4)
+# Fight Simulator - 기획안 (v1.5)
 
 ## 1. 프로젝트 개요
 
@@ -11,6 +11,7 @@
 - **완전 자동 시뮬레이션**: 전투 중 사용자 개입 없음. AI가 전술 판단 → 텍스트 로그로 재현
 - **하이브리드 입력**: 자연어("복싱 6개월, 주 3회") + 드롭다운 선택 병행, confidence 낮으면 보정 유도
 - **로컬 퍼스트**: `npm run dev` 한 방 실행, 외부 의존성 없음, 완전 오프라인 동작
+- **단일 HTML 배포**: `npm run build:standalone` → `dist/fight-simulator.html` 하나로 배포 — 더블클릭으로 브라우저 실행, 서버·Node·설치 불필요 (esbuild 인라인 번들, 자체 무결성 검증 포함)
 - **이중 스케일 지원**: 상대적(0-100, 성인 남성 평균 기준) ↔ 절대값(SI 단위) 설정 토글로 즉시 전환
 - **물리 기반 그래플링**: Matter.js Constraint로 잡기/눕히기/꺾기 실제 힘겨루기 시뮬
 - **동물 습성 반영**: 공격성/영역성/도주성/지능/사회성/사냥방식 + 실측 바이오메카닉스로 AI 성향 차별화
@@ -32,7 +33,7 @@
 | 시뮬레이션 횟수 | number | ⚙️ 설정 | 100~2000 (슬라이더, 기본 200) |
 | 시뮬 시간 제한 | select | ⚙️ 설정 | 1분/5분/10분/무제한 (벽시계 기준) |
 
-> **파생 자동 계산**: BMI, 체지방률, 제지방량, 기초대사량(BMR), 체표면적(BSA), 신체 세그먼트 18개(질량/길이/단면적/뼈밀도/근육두께/지방두께), 내구도 프로파일
+> **파생 자동 계산**: BMI, 체지방률, 제지방량, 기초대사량(BMR), 체표면적(BSA), 신체 세그먼트 19개(질량/길이/단면적/뼈밀도/근육두께/지방두께), 내구도 프로파일
 
 ---
 
@@ -185,7 +186,7 @@ interface SegmentParams {
   radiusGyration: number;   // 관성 반경 계수
 }
 
-// 18개 세그먼트 파라미터 (남성 기준, 여성은 보정 계수 적용) - groin 포함
+// 19개 세그먼트 파라미터 (남성 기준, 여성은 보정 계수 적용) - torso 4분할 18개 + groin
 const ZATSIORSKY_SEGMENTS: Record<BodyPartId, SegmentParams> = {
   head: { massPercent: 0.073, lengthPercent: 0.13, comPosition: 0.55, radiusGyration: 0.30 },
   neck: { massPercent: 0.017, lengthPercent: 0.07, comPosition: 0.50, radiusGyration: 0.40 },
@@ -205,6 +206,7 @@ const ZATSIORSKY_SEGMENTS: Record<BodyPartId, SegmentParams> = {
   leg_upper_r: { massPercent: 0.100, lengthPercent: 0.245, comPosition: 0.409, radiusGyration: 0.326 },
   leg_lower_r: { massPercent: 0.047, lengthPercent: 0.147, comPosition: 0.439, radiusGyration: 0.416 },
   foot_r: { massPercent: 0.015, lengthPercent: 0.057, comPosition: 0.500, radiusGyration: 0.475 },
+  groin: { massPercent: 0.010, lengthPercent: 0.040, comPosition: 0.50, radiusGyration: 0.35 },
 };
 ```
 
@@ -683,4 +685,4 @@ interface UserSettings {
 
 ---
 
-*문서 버전: 1.4 | 최종 수정: 2026-09-11 | 작성자: wolfool*
+*문서 버전: 1.5 | 최종 수정: 2026-09-18 | 작성자: wolfool*
