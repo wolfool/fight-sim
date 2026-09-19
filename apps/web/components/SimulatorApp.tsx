@@ -1,14 +1,23 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "../app/page.module.css";
 import type { ParsedBackground } from "@fight-sim/core/data/schemas";
 import {
   BackgroundParser,
   type ParseResult,
 } from "@fight-sim/core/parser/BackgroundParser";
+import {
+  buildHumanFighter,
+  buildAnimalFighter,
+  buildFightContext,
+  runMonteCarlo,
+  type SimulationReport,
+} from "@fight-sim/core/engine";
+import { ANIMAL_PRESETS } from "@fight-sim/core/data/animal-traits";
 import StatsPreview from "./StatsPreview";
 import OpponentPicker, { KOREAN_NAME } from "./OpponentPicker";
+import ResultsPanel from "./ResultsPanel";
 
 const parser = new BackgroundParser();
 
@@ -35,6 +44,19 @@ const TIME_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "10min", label: "10분" },
   { value: "unlimited", label: "무제한" },
 ];
+
+const OPPONENT_EMOJI: Record<string, string> = {
+  human_untrained: String.fromCodePoint(0x1f9cd),
+  chimpanzee: String.fromCodePoint(0x1f412),
+  gorilla: String.fromCodePoint(0x1f98d),
+  orangutan: String.fromCodePoint(0x1f9a5),
+  tiger: String.fromCodePoint(0x1f42f),
+  lion: String.fromCodePoint(0x1f981),
+  brown_bear: String.fromCodePoint(0x1f43b),
+  grizzly: String.fromCodePoint(0x1f43b),
+  wolf: String.fromCodePoint(0x1f43a),
+  wild_boar: String.fromCodePoint(0x1f417),
+};
 
 function monthLabel(m: number): string {
   if (m === 0) return "무경험";
@@ -76,6 +98,11 @@ export default function SimulatorApp() {
 
   const [opponent, setOpponent] = useState<string | null>(null);
   const [notice, setNotice] = useState(false);
+
+  const [simulating, setSimulating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [report, setReport] = useState<SimulationReport | null>(null);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const text = historyText.trim();
@@ -151,8 +178,41 @@ export default function SimulatorApp() {
     }
   };
 
-  const onSimulate = () => {
-    setNotice(true);
+  const onSimulate = async () => {
+    if (!formValid || !parsedBackground || !opponent || simulating) return;
+    const profile = ANIMAL_PRESETS[opponent];
+    if (!profile) return;
+    setSimulating(true);
+    setNotice(false);
+    setReport(null);
+    setProgress(0);
+    const me = buildHumanFighter({
+      name: "나",
+      height: num(height),
+      weight: num(weight),
+      skeletalMuscleMass: num(smm),
+      bodyFatMass: num(fm),
+      age: num(age),
+      sex,
+      parsedBackground,
+      deathAllowed,
+    });
+    const foe = buildAnimalFighter(profile);
+    const ctx = buildFightContext({
+      homeGround,
+      deathAllowed,
+      timeLimit: timeLimit as "1min" | "5min" | "10min" | "unlimited",
+      seed: Math.floor(Math.random() * 1e9),
+    });
+    try {
+      const rep = await runMonteCarlo(me, foe, ctx, simulationCount, (done, total) =>
+        setProgress(Math.round((done / total) * 100))
+      );
+      setReport(rep);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } finally {
+      setSimulating(false);
+    }
   };
 
   return (
@@ -494,10 +554,13 @@ export default function SimulatorApp() {
           <button
             type="button"
             className={styles.simBtn}
-            disabled={!formValid}
+            disabled={!formValid || simulating}
             onClick={onSimulate}
           >
-            시뮬레이션 시작 <span className={styles.simArrow}>→</span>
+            {simulating
+              ? `시뮬레이션 중... ${progress}%`
+              : "시뮬레이션 시작"}{" "}
+            <span className={styles.simArrow}>→</span>
           </button>
           <p className={styles.statusCard}>
             {!specValid ? (
@@ -512,6 +575,19 @@ export default function SimulatorApp() {
               </span>
             )}
           </p>
+          {simulating && (
+            <div className={styles.simProgress}>
+              <span className={styles.simProgressLabel}>
+                몬테카를로 {simulationCount}회 진행 중... {progress}%
+              </span>
+              <div className={styles.simProgressBar}>
+                <span
+                  className={styles.simProgressFill}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
           {notice && (
             <div className={styles.statusCard}>
               <b>시뮬레이션 엔진 준비 중 (Phase 2)</b>
@@ -522,6 +598,18 @@ export default function SimulatorApp() {
             </div>
           )}
         </div>
+
+        {report && (
+          <div ref={resultsRef}>
+            <ResultsPanel
+              report={report}
+              myName="나"
+              opponentLabel={opponentLabel}
+              opponentEmoji={opponent ? OPPONENT_EMOJI[opponent] ?? String.fromCodePoint(0x2753) : String.fromCodePoint(0x2753)}
+              deathAllowed={deathAllowed}
+            />
+          </div>
+        )}
 
         <footer className={styles.footer}>
           <b>Fight Simulator</b> · 모든 데이터는 문헌 기반 추정치이며 실제 결과를 보장하지 않습니다.

@@ -2,7 +2,7 @@ import {
   BodyPartId, FighterType, TechniqueCategory, Stance, DamageType,
   KnockoutRule, FinishType, TerrainType, LightingType, HomeGroundSide,
   Range, Vector2, ForceVector, VelocityVector, TrajectoryPoint2D,
-  JointAngle, JointTransform2D, StatScaling
+  JointAngle, JointTransform2D, StatScaling, NaturalArmor, AnimalTraits
 } from './types';
 
 export interface UserProfile {
@@ -126,6 +126,9 @@ export interface Fighter {
   techniques: Technique[];
   mentality: Mentality;
   condition: Condition;
+  armor?: NaturalArmor[];
+  traits?: AnimalTraits;
+  moveSpeed?: number;
 }
 
 export interface BiomechanicsData {
