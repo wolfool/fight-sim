@@ -18,7 +18,7 @@ function migrateSettings(raw: any): UserSettings {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS;
   
   const version = raw.version ?? 0;
-  let settings = { ...DEFAULT_SETTINGS, ...raw };
+  const settings = { ...DEFAULT_SETTINGS, ...raw };
   
   // v0 → v1: timeLimit 필드 추가
   if (version < 1) {
