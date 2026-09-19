@@ -1,9 +1,9 @@
-import { Fighter } from '../domain/fighter';
+﻿import { Fighter } from '../domain/fighter';
 import { FightContext } from '../domain/context';
 import { ParsedBackground } from '../domain/fighter';
 import { DetailedAnimalProfile } from '../domain/types';
 import { deriveBodySpec } from '../data/body-segments';
-import { deriveCoreStats, getRecommendedTechniques } from '../data/art-stats';
+import { deriveCoreStats, getCompositeTechniques } from '../data/art-stats';
 import { animalToFighter } from '../data/animal-traits';
 import { naturalWeaponToTechniques, techniquesFromIds, RuntimeTechnique } from './default-techniques';
 import { Technique } from '../domain/fighter';
@@ -48,7 +48,7 @@ export function buildHumanFighter(input: HumanFighterInput): Fighter {
 
   const primaryArt = input.parsedBackground?.primaryArt ?? 'default';
   const experienceMonths = input.parsedBackground?.experienceMonths ?? 0;
-  const techniqueIds = getRecommendedTechniques(primaryArt, experienceMonths);
+  const techniqueIds = getCompositeTechniques(input.parsedBackground ?? { primaryArt, experienceMonths, trainingFrequency: 2, confidence: 0.5 });
   const techniques: Technique[] = techniquesFromIds(techniqueIds);
 
   const mentality = {

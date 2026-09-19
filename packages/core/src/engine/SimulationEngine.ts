@@ -11,6 +11,7 @@ import { PhysiologySystem } from '../physiology/physiology-system';
 import { resolveStrike } from './CombatResolver';
 
 const DT = 1 / 60;
+const ARENA_BOUND = 6;
 const CLINCH_ENTER_DIST = 0.45;
 const CLINCH_EXIT_DIST = 0.75;
 const KNOCKDOWN_STUN_THRESHOLD = 0.45;
@@ -71,6 +72,7 @@ export class DefaultSimulationEngine {
   private frame = 0;
   private frames: FightFrame[] = [];
   private frameTimer = 0;
+  private clinchHold = 0;
   private recordFrames: boolean;
   private roundKnockdowns = { A: 0, B: 0 };
   private roundStartScore = { A: 0, B: 0 };
@@ -240,8 +242,8 @@ export class DefaultSimulationEngine {
     }
 
     if (f.movementTimer > 0 && (f.posture === 'standing' || f.posture === 'clinch')) {
-      const speed = f.moveSpeed * (1 - f.fatigue * 0.3);
-      f.x += f.movementDir * speed * DT;
+      const speed = f.moveSpeed * (1 - f.fatigue * 0.3) * this.legFactor(f);
+      f.x = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, f.x + f.movementDir * speed * DT));
       f.movementTimer -= DT;
     }
 
@@ -367,8 +369,8 @@ export class DefaultSimulationEngine {
     }
 
     const dodgeChance = Math.max(
-      0.05,
-      Math.min(0.35, 0.05 + (opp.stats.speed + opp.stats.agility - f.stats.speed) / 400)
+      0.03,
+      Math.min(0.4, 0.05 + (this.effStats(opp).speed + this.effStats(opp).agility - this.effStats(f).speed) / 400 - this.effStats(f).technique / 800)
     );
     if (opp.posture === 'standing' && this.rng.chance(dodgeChance)) {
       this.log('dodge', f.side, opp.side, 'dodged', `${opp.name}, ${tech.name} 회피!`, {
@@ -381,12 +383,13 @@ export class DefaultSimulationEngine {
 
     const outcome = resolveStrike({
       technique: tech,
-      attackerStats: f.stats,
+      timestamp: this.time,
+      attackerStats: this.effStats(f),
       attackerFatigue: f.fatigue,
       attackerAdrenaline: f.adrenaline,
       defenderDurability: opp.durability,
       defenderArmor: opp.armor,
-      defenderStats: opp.stats,
+      defenderStats: this.effStats(opp),
       defenderHeadMassKg: opp.headMass,
       defenseMultiplier: guardBlocks ? 0.15 : 1,
       rng: this.rng,
@@ -405,7 +408,7 @@ export class DefaultSimulationEngine {
     this.physiology.applyDamageStress(opp, outcome.totalDamage);
 
     const kb = Math.min(0.6, tech.biomechanics.impulse / Math.max(20, opp.mass * 20));
-    opp.x += (f.x < opp.x ? 1 : -1) * kb;
+    opp.x = Math.max(-ARENA_BOUND, Math.min(ARENA_BOUND, opp.x + (f.x < opp.x ? 1 : -1) * kb));
     if (opp.applyingChoke && outcome.totalDamage >= SCORE_SIG_STRIKE) {
       opp.applyingChoke = false;
       opp.action = null;
@@ -476,6 +479,26 @@ export class DefaultSimulationEngine {
     if (opp.health <= 0) this.finish('tko', f.side);
   }
 
+  private effStats(f: RuntimeFighterState): import('../domain/fighter').CoreStats {
+    const d = (id: string) => f.damageByPart[id] ?? 0;
+    const legs = d('leg_upper_l') + d('leg_upper_r') + d('leg_lower_l') + d('leg_lower_r');
+    const arms = d('arm_upper_l') + d('arm_upper_r') + d('arm_lower_l') + d('arm_lower_r') + d('hand_l') + d('hand_r');
+    const s = { ...f.stats };
+    s.agility = Math.max(10, s.agility * Math.max(0.4, 1 - legs / 120));
+    s.speed = Math.max(10, s.speed * Math.max(0.5, 1 - legs / 160));
+    s.strength = Math.max(10, s.strength * Math.max(0.5, 1 - arms / 160));
+    if (f.concussions > 0) {
+      s.technique = Math.max(5, s.technique * Math.max(0.4, 1 - f.concussions * 0.25));
+    }
+    return s;
+  }
+
+  private legFactor(f: RuntimeFighterState): number {
+    const d = (id: string) => f.damageByPart[id] ?? 0;
+    const legs = d('leg_upper_l') + d('leg_upper_r') + d('leg_lower_l') + d('leg_lower_r');
+    return Math.max(0.4, 1 - legs / 120);
+  }
+
   private defenseMultiplier(def: RuntimeFighterState, tech: RuntimeTechnique): number {
     if (def.guard !== 'high') return 1;
     const targetsGuarded = tech.effects.damage.targetParts.some(
@@ -485,10 +508,10 @@ export class DefaultSimulationEngine {
   }
 
   private resolveTakedown(f: RuntimeFighterState, opp: RuntimeFighterState, tech: RuntimeTechnique): void {
-    const atkScore =
-      f.stats.strength + f.stats.agility * 0.5 + f.stats.technique * 0.6 + this.rng.float(0, 30);
-    const defScore =
-      opp.stats.strength * 0.9 + opp.stats.agility * 0.8 + opp.stats.technique * 0.5 + this.rng.float(0, 30);
+    const aS = this.effStats(f);
+    const dS = this.effStats(opp);
+    const atkScore = aS.strength + aS.agility * 0.5 + aS.technique * 0.6 + this.rng.float(0, 30);
+    const defScore = dS.strength * 0.9 + dS.agility * 0.8 + dS.technique * 0.5 + this.rng.float(0, 30);
     if (atkScore > defScore && opp.posture === 'standing') {
       f.posture = 'ground_top';
       opp.posture = 'ground_bottom';
@@ -542,6 +565,8 @@ export class DefaultSimulationEngine {
         continue;
       }
       opp.chokeTimer += DT;
+      if (opp.posture === 'downed') opp.downTimer = Math.max(opp.downTimer, 0.8);
+      else if (opp.posture === 'stunned') opp.stunTimer = Math.max(opp.stunTimer, 0.8);
       if (this.ctx.rules.deathAllowed) {
         if (opp.chokeTimer >= CHOKE_DEATH_S) {
           this.finish('death', f.side, `${f.name}의 조임 — ${opp.name}, 질식사`);
@@ -588,8 +613,9 @@ export class DefaultSimulationEngine {
     this.setCooldown(f, 'surrender', 0.5);
     if (!this.ctx.rules.surrenderAllowed) return;
     if (f.mentality.killIntent >= 60) return;
+    if (f.health > 45 || f.pain < 40) return;
     const urge = f.pain * 0.5 + f.fear * 0.4 + f.fatigue * 30;
-    if (urge > 55 && this.rng.chance(0.3)) {
+    if (urge > 65 && this.rng.chance(0.15)) {
       this.finish('surrender', f.side === 'A' ? 'B' : 'A');
     }
   }
@@ -665,11 +691,24 @@ export class DefaultSimulationEngine {
     if (bothStanding && dist < CLINCH_ENTER_DIST) {
       this.A.posture = 'clinch';
       this.B.posture = 'clinch';
+      this.clinchHold = 0;
       this.log('clinch', 'A', 'B', 'landed', '클린치');
     } else if (bothClinch && dist > CLINCH_EXIT_DIST) {
       this.A.posture = 'standing';
       this.B.posture = 'standing';
       this.log('separation', 'A', 'B', 'landed', '클린치 브레이크');
+    } else if (bothClinch) {
+      this.clinchHold += DT;
+      if (this.clinchHold > 2.5) {
+        this.clinchHold = 0;
+        this.A.posture = 'standing';
+        this.B.posture = 'standing';
+        this.A.x = Math.max(-ARENA_BOUND, this.A.x - 0.5);
+        this.B.x = Math.min(ARENA_BOUND, this.B.x + 0.5);
+        this.log('separation', 'A', 'B', 'landed', '레프리 브레이크 — 클린치 분리');
+      }
+    } else {
+      this.clinchHold = 0;
     }
     if (dist < 0.15) {
       const mid = (this.A.x + this.B.x) / 2;

@@ -1,4 +1,4 @@
-import { Technique, BiomechanicsData, TechniqueEffects, AIWeight } from '../domain/fighter';
+﻿import { Technique, BiomechanicsData, TechniqueEffects, AIWeight } from '../domain/fighter';
 import {
   TechniqueCategory, FightState, BodyPartId, DamageType, Vector2,
 } from '../domain/types';
@@ -126,7 +126,7 @@ export const HUMAN_TECHNIQUES: RuntimeTechnique[] = [
     effects({ targetParts: ['torso_front', 'head'], damageType: 'blunt', stunDuration: 0.4, stunIntensity: 0.5, knockbackForce: 200 }),
     { min: 0.2, max: 0.7 }, 6, { offensive: 1.3, finisher: 0.5 }),
 
-  tech('double_leg', '더블레그 테이크다운', 'grapple_takedown', ['STANDING'],
+  tech('double_leg', '더블레그 테이크다운', 'grapple_takedown', ['STANDING', 'CLINCH'],
     bio({ windupTime: 0.35, executionTime: 0.2, peakForce: 2500, peakVelocity: 5, impulse: 200, contactArea: 200, recoveryTime: 0.5, energyCost: 8 }),
     effects({ targetParts: ['torso_front'], damageType: 'blunt', stunDuration: 0.5, stunIntensity: 0.5, knockbackForce: 300 }),
     { min: 0.5, max: 1.6 }, 8, { offensive: 1.2 }),

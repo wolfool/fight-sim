@@ -1,11 +1,12 @@
-import { RuntimeFighterState } from '../engine/runtime-types';
+﻿import { RuntimeFighterState } from '../engine/runtime-types';
 
 export const PASSIVE_STAMINA_DRAIN_PER_SEC = 0.15;
+export const STAMINA_REGEN_PER_SEC = 0.25;
 export const BASE_FATIGUE_RATE = 0.004;
 
 export class PhysiologySystem {
   updatePassive(f: RuntimeFighterState, dt: number): void {
-    f.stamina = Math.max(0, f.stamina - PASSIVE_STAMINA_DRAIN_PER_SEC * dt);
+    f.stamina = Math.min(100, f.stamina + STAMINA_REGEN_PER_SEC * dt);
 
     const injuryLoad = f.injuries.reduce((a, i) => a + i.functionalLoss, 0);
     const targetFatigue = Math.min(1, (1 - f.stamina / 100) * 0.8 + injuryLoad * 0.2);
@@ -22,7 +23,7 @@ export class PhysiologySystem {
   }
 
   applyExertion(f: RuntimeFighterState, staminaCost: number): void {
-    f.stamina = Math.max(0, f.stamina - staminaCost);
+    f.stamina = Math.max(0, f.stamina - staminaCost * 0.5);
   }
 
   applyDamageStress(f: RuntimeFighterState, damage: number): void {

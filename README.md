@@ -1,159 +1,79 @@
-# Turborepo starter
+﻿# Fight Simulator
 
-This Turborepo starter is maintained by the Turborepo core team.
+**내 몸으로 싸우면 얼마나 이길까?**
 
-## Using this example
+문헌 기반 바이오메카닉스로 신체 스펙과 격투 이력을 입력한 **가상의 나**가 상대(무수련 인간부터 침팬지, 고릴라, 호랑이, 회색곰까지)와 싸울 때의 승률을 몬테카를로 시뮬레이션으로 예측합니다.
 
-Run the following command:
+**데모**: https://wolfool.github.io/fight-sim/
 
-```sh
-npx create-turbo@latest
+## 기능
+
+- **신체 스펙 기반 스탯 도출** — 키/몸무게/골격근량(SMM)/체지방량(FM)/나이/성별로 FFMI, 근육비율 기반 코어 스탯 8종 계산 (연령·성별 보정 포함)
+- **격투 이력 반영** — 주 종목 + 보조 종목 복합 이력이 스탯과 사용 기술에 합산 반영
+- **상대 10종 프리셋** — 무수련 인간, 침팬지, 고릴라, 오랑우탄, 호랑이, 사자, 불곰, 회색곰, 늑대, 멧돼지 (문헌 기반 무기/갑옷/행동 특성)
+- **전투 시뮬레이션 엔진** — 60Hz 결정론적 스텝, 조임/그라운드/항복/판정 규칙, 부상이 기동력·타격력·기술에 실시간 영향
+- **몬테카를로 승률** — 100~2000회 반복, Wilson 95% 신뢰구간, 종료 방식(KO/TKO/서브미션/판정/항복/사망) 분포
+- **전투 리플레이** — 샘플 전투의 이동/기술/상태를 애니메이션으로 재생 (배속·스크럽), **인체 부위 19개 피해 모형**이 실시간으로 물듦
+- **결과 캐시** — 상대별 결과가 유지되어 상대를 바꿔도 다시 돌아오면 이전 결과가 그대로 표시
+- **링크 공유** — 매치업 설정을 URL 해시로 인코딩해 복사 (결과 요약 복사도 지원)
+- **완전 오프라인** — 서버 없이 동작하는 단일 HTML 파일 배포
+
+## 사용법
+
+### 웹 (GitHub Pages)
+https://wolfool.github.io/fight-sim/ 에 접속하면 됩니다.
+
+### 단일 HTML 파일
+```bash
+npm run build:standalone
+# dist/fight-simulator.html 을 브라우저로 열기 (더블클릭)
 ```
 
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+### 개발
+```bash
+npm install
+npm run dev            # http://localhost:3000
+npm test               # 71개 테스트 (파서/스탯/동물/엔진/밸런스)
+npm run check-types    # 타입 체크
+npm run build          # 프로덕션 빌드
 ```
 
-Without global `turbo`, use your package manager:
+## 시뮬레이션 원리 (요약)
 
-```sh
-cd my-turborepo
-npx turbo build
-npm exec turbo build
-npm exec turbo build
+| 요소 | 방식 |
+|---|---|
+| 타격 데미지 | 접촉압력/조직 저항 비율 법칙 + 충격에너지 (피부·근육·뼈 인장강도 기반) |
+| KO | HIC(Head Injury Criterion) 근사: a_g^2.5 기반 즉사 KO + 로지스틱 뇌진탕 확률 (3회 누적 TKO) |
+| 골절 | Weibull 파괴 확률 (응력비 기반) |
+| 사망 | 초키 지속, 실혈 40%+, 장기 파열 (죽음을 각오함 활성화 시) |
+| 동물 | 문헌 기반 교합력/스윕력/갑옷 두께 + 사냥 패턴(매복/추격/돌진) 행동 가중치 |
+| 재현성 | 모든 난수가 시드 기반 — 같은 시드면 비트 수준 동일 결과 |
+| 밸런스 검증 | 시나리오 테스트 자동화: 복서 3년 압도, 호랑이 vs 숙련자, 무수련 백중세 등 |
+
+상세 수식과 문헌 인용은 [DESIGN.md](./DESIGN.md) 참고.
+
+## 아키텍처
+
+```
+packages/core        시뮬레이션 코어 (프레임워크 불가지)
+  ├─ parser/        자연어 이력 파서 (BackgroundParser)
+  ├─ data/          문헌 기반 데이터 (세그먼트/무술/동물/앵커값)
+  ├─ domain/        타입 정의
+  ├─ engine/        시뮬레이션 엔진 (CombatResolver·DecisionEngine·몬테카를로)
+  └─ physiology/    피로/아드레날린/회복 시스템
+apps/web            Next.js UI (결과 패널·리플레이)
+apps/standalone     단일 HTML 번들 (esbuild)
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## 배포
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
+```bash
+npm run build:standalone   # 단일 HTML 생성
+npm run deploy:pages       # gh-pages 브랜치 푸시 + Pages 활성화
 ```
 
-Without global `turbo`:
+릴리스: GitHub Releases 페이지에서 단일 HTML 파일을 직접 다운로드할 수 있습니다.
 
-```sh
-npx turbo build --filter=docs
-npm exec turbo build --filter=docs
-npm exec turbo build --filter=docs
-```
+## 주의
 
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-npm exec turbo dev
-npm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-npm exec turbo dev --filter=web
-npm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-npm exec turbo login
-npm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-npm exec turbo link
-npm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+본 프로젝트는 **엔터테인먼트 목적**입니다. 모든 수치는 공개 문헌 기반 추정치이며 실제 결과를 보장하지 않습니다.

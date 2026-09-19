@@ -1265,3 +1265,31 @@
   border-radius: 4px;
   background: linear-gradient(90deg, #334155, #eab308, #f97316, #ef4444, #991b1b);
 }
+
+/* ===== 공유 ===== */
+.shareBtn {
+  padding: 14px 22px;
+  border-radius: 12px;
+  border: 1px solid rgba(56,189,248,0.35);
+  background: rgba(56,189,248,0.08);
+  color: #e0f2fe;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.shareBtn:hover:not(:disabled) { background: rgba(56,189,248,0.18); }
+.shareBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 결과 요약 복사 */
+.copySummaryBtn {
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(148,163,184,0.35);
+  background: rgba(51,65,85,0.5);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.copySummaryBtn:hover { background: rgba(71,85,105,0.7); }

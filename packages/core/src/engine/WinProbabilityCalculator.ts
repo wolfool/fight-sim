@@ -36,6 +36,8 @@ export async function runMonteCarlo(
   let totalDurationSq = 0;
   let sampleResult: FightResult | null = null;
   let sampleFrames: FightFrame[] = [];
+  const nowFn = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+  let lastYield = nowFn();
   const maxSteps = Math.ceil((context.rules.roundDuration * context.rules.maxRounds) / (1 / 60) * MAX_STEPS_MULTIPLIER) + 600;
 
   for (let i = 0; i < n; i++) {
@@ -59,7 +61,9 @@ export async function runMonteCarlo(
     totalDuration += result.duration;
     totalDurationSq += result.duration * result.duration;
 
-    if (i % 25 === 24) {
+    const nowMs = nowFn();
+    if (nowMs - lastYield > 30 || i === n - 1) {
+      lastYield = nowMs;
       onProgress?.(i + 1, n);
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }

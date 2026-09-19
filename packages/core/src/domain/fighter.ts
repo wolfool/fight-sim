@@ -1,4 +1,4 @@
-import {
+﻿import {
   BodyPartId, FighterType, TechniqueCategory, Stance, DamageType,
   KnockoutRule, FinishType, TerrainType, LightingType, HomeGroundSide,
   Range, Vector2, ForceVector, VelocityVector, TrajectoryPoint2D,
@@ -24,6 +24,8 @@ export interface ParsedBackground {
   trainingFrequency: number;
   gymEnvironment?: string;
   confidence: number;
+  secondaryArt?: string;
+  secondaryExperienceMonths?: number;
 }
 
 export interface BodySegment {

@@ -4,10 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "../app/page.module.css";
 import type { ParsedBackground } from "@fight-sim/core/data/schemas";
 import {
-  BackgroundParser,
-  type ParseResult,
-} from "@fight-sim/core/parser/BackgroundParser";
-import {
   buildHumanFighter,
   buildAnimalFighter,
   buildFightContext,
@@ -18,8 +14,6 @@ import { ANIMAL_PRESETS } from "@fight-sim/core/data/animal-traits";
 import StatsPreview from "./StatsPreview";
 import OpponentPicker, { KOREAN_NAME } from "./OpponentPicker";
 import ResultsPanel from "./ResultsPanel";
-
-const parser = new BackgroundParser();
 
 const ART_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "none", label: "무수련" },
@@ -70,6 +64,20 @@ const num = (v: string) => {
   return Number.isFinite(n) ? n : NaN;
 };
 
+function encodeState(obj: unknown): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function decodeState(s: string): Record<string, unknown> {
+  const bin = atob(s);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+}
+
 export default function SimulatorApp() {
   const [height, setHeight] = useState("175");
   const [weight, setWeight] = useState("72");
@@ -78,14 +86,11 @@ export default function SimulatorApp() {
   const [age, setAge] = useState("30");
   const [sex, setSex] = useState<"male" | "female">("male");
 
-  const [historyText, setHistoryText] = useState("");
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [manualOverride, setManualOverride] = useState(false);
-
   const [art, setArt] = useState("none");
   const [months, setMonths] = useState(0);
   const [freq, setFreq] = useState(0);
+  const [secondary, setSecondary] = useState("none");
+  const [secondaryMonths, setSecondaryMonths] = useState(0);
 
   const [homeGround, setHomeGround] = useState<"me" | "opponent" | "neutral">("neutral");
   const [deathAllowed, setDeathAllowed] = useState(false);
@@ -97,35 +102,43 @@ export default function SimulatorApp() {
   const [timeLimit, setTimeLimit] = useState("5min");
 
   const [opponent, setOpponent] = useState<string | null>(null);
-  const [notice, setNotice] = useState(false);
-
+  const [reports, setReports] = useState<Record<string, SimulationReport>>({});
   const [simulating, setSimulating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [report, setReport] = useState<SimulationReport | null>(null);
+  const [copied, setCopied] = useState(false);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const text = historyText.trim();
-    if (!text) {
-      setParseResult(null);
-      setParsing(false);
-      return;
+    if (typeof window === "undefined") return;
+    const h = window.location.hash;
+    if (!h.startsWith("#m=")) return;
+    try {
+      const d = decodeState(h.slice(3));
+      const gs = (k: string, dflt: string) => (typeof d[k] === "string" ? (d[k] as string) : dflt);
+      const gn = (k: string, dflt: number) =>
+        typeof d[k] === "number" && Number.isFinite(d[k] as number) ? (d[k] as number) : dflt;
+      const gb = (k: string, dflt: boolean) => (typeof d[k] === "boolean" ? (d[k] as boolean) : dflt);
+      setHeight(gs("h", "175"));
+      setWeight(gs("w", "72"));
+      setSmm(gs("s", "32"));
+      setFm(gs("f", "14"));
+      setAge(gs("a", "30"));
+      setSex(gs("g", "male") === "female" ? "female" : "male");
+      setArt(gs("pa", "none"));
+      setMonths(gn("pm", 0));
+      setFreq(gn("pf", 0));
+      setSecondary(gs("sa", "none"));
+      setSecondaryMonths(gn("smo", 0));
+      setHomeGround(gs("hg", "neutral") as "me" | "opponent" | "neutral");
+      setDeathAllowed(gb("da", false));
+      setStatsScale(gs("sc", "relative") === "absolute" ? "absolute" : "relative");
+      setSimulationCount(gn("n", 200));
+      setTimeLimit(gs("tl", "5min"));
+      setOpponent(gs("op", null as unknown as string) || null);
+    } catch {
+      /* 잘못된 링크는 무시 */
     }
-    setParsing(true);
-    const timer = setTimeout(() => {
-      setParseResult(parser.parse(text));
-      setParsing(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [historyText]);
-
-  useEffect(() => {
-    if (parseResult && !manualOverride) {
-      setArt(parseResult.parsed.primaryArt || "none");
-      setMonths(parseResult.parsed.experienceMonths ?? 0);
-      setFreq(parseResult.parsed.trainingFrequency ?? 0);
-    }
-  }, [parseResult, manualOverride]);
+  }, []);
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
@@ -144,31 +157,23 @@ export default function SimulatorApp() {
   }, [height, weight, smm, fm, age]);
 
   const specValid = Object.keys(errors).length === 0;
-  const backgroundValid = historyText.trim() !== "" || art !== "none";
-  const formValid = specValid && backgroundValid && opponent !== null;
+  const formValid = specValid && opponent !== null;
 
   const parsedBackground: ParsedBackground | null = useMemo(() => {
     if (!specValid) return null;
     return {
       primaryArt: art === "none" ? "default" : art,
       experienceMonths: months,
-      trainingFrequency: freq,
-      confidence: parseResult?.parsed.confidence ?? 0.5,
+      trainingFrequency: Math.max(1, freq),
+      confidence: 0.9,
+      ...(secondary !== "none"
+        ? { secondaryArt: secondary, secondaryExperienceMonths: secondaryMonths }
+        : {}),
     };
-  }, [specValid, art, months, freq, parseResult]);
-
-  const confidence = parseResult?.parsed.confidence ?? 0;
-  const confClass =
-    confidence >= 0.7 ? styles.confGood : confidence >= 0.4 ? styles.confWarn : styles.confBad;
-  const confLabel =
-    confidence >= 0.7 ? "높음" : confidence >= 0.4 ? "보통" : "낮음";
+  }, [specValid, art, months, freq, secondary, secondaryMonths]);
 
   const opponentLabel = opponent ? (KOREAN_NAME[opponent] ?? opponent) : "";
-
-  const onManualChange = <T,>(setter: (v: T) => void) => (v: T) => {
-    setManualOverride(true);
-    setter(v);
-  };
+  const report = opponent ? reports[opponent] ?? null : null;
 
   const onDeathToggle = () => {
     if (deathAllowed) {
@@ -179,12 +184,11 @@ export default function SimulatorApp() {
   };
 
   const onSimulate = async () => {
-    if (!formValid || !parsedBackground || !opponent || simulating) return;
-    const profile = ANIMAL_PRESETS[opponent];
-    if (!profile) return;
+    if (!formValid || !parsedBackground || simulating) return;
+    const oppAtStart = opponent;
+    const profile = oppAtStart ? ANIMAL_PRESETS[oppAtStart] : null;
+    if (!profile || !oppAtStart) return;
     setSimulating(true);
-    setNotice(false);
-    setReport(null);
     setProgress(0);
     const me = buildHumanFighter({
       name: "나",
@@ -208,11 +212,31 @@ export default function SimulatorApp() {
       const rep = await runMonteCarlo(me, foe, ctx, simulationCount, (done, total) =>
         setProgress(Math.round((done / total) * 100))
       );
-      setReport(rep);
-      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      setReports((prev) => ({ ...prev, [oppAtStart]: rep }));
+      setTimeout(
+        () => resultsRef.current?.scrollIntoView({ behavior: "smooth" }),
+        100
+      );
     } finally {
       setSimulating(false);
     }
+  };
+
+  const onShare = async () => {
+    const payload = {
+      h: height, w: weight, s: smm, f: fm, a: age, g: sex,
+      pa: art, pm: months, pf: freq, sa: secondary, smo: secondaryMonths,
+      hg: homeGround, da: deathAllowed, sc: statsScale, n: simulationCount,
+      tl: timeLimit, op: opponent,
+    };
+    const url = `${window.location.origin}${window.location.pathname}#m=${encodeState(payload)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("링크를 복사하세요:", url);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
   };
 
   return (
@@ -331,52 +355,15 @@ export default function SimulatorApp() {
             <section className={styles.card}>
               <div className={styles.cardTitle}>
                 <span className={styles.cardNum}>2</span> 격투 이력
-                <span className={styles.ddHint}>
-                  {parsing ? "파싱 중..." : "자연어 + 직접 선택 병행"}
-                </span>
+                <span className={styles.ddHint}>주 종목 + 보조 종목 조합</span>
               </div>
-              <textarea
-                className={styles.textarea}
-                placeholder="예: 복싱 6개월, 주 3회 · 주짓수 1년 · 태권도 3년 (도장)"
-                value={historyText}
-                onChange={(e) => {
-                  setHistoryText(e.target.value);
-                  setManualOverride(false);
-                }}
-              />
-
-              {parseResult && (
-                <div className={styles.parsePreview}>
-                  <div className={styles.parseTop}>
-                    <span className={styles.parseLabel}>파싱 결과</span>
-                    <span className={`${styles.confBadge} ${confClass}`}>
-                      신뢰도 {confLabel} · {Math.round(confidence * 100)}%
-                    </span>
-                  </div>
-                  <div className={styles.parseItems}>
-                    <span className={styles.parseItem}>
-                      종목 <b>{ART_OPTIONS.find((o) => o.value === parseResult.parsed.primaryArt)?.label ?? parseResult.parsed.primaryArt}</b>
-                    </span>
-                    <span className={styles.parseItem}>
-                      경력 <b>{monthLabel(parseResult.parsed.experienceMonths)}</b>
-                    </span>
-                    <span className={styles.parseItem}>
-                      빈도 <b>주 {parseResult.parsed.trainingFrequency}회</b>
-                    </span>
-                  </div>
-                  {parseResult.warnings.length > 0 && (
-                    <span className={styles.warnText}>{parseResult.warnings.join(" · ")}</span>
-                  )}
-                </div>
-              )}
-
               <div className={styles.ddRow}>
                 <div className={styles.field}>
-                  <label className={styles.label}>종목</label>
+                  <label className={styles.label}>주 종목</label>
                   <select
                     className={styles.select}
                     value={art}
-                    onChange={(e) => onManualChange(setArt)(e.target.value)}
+                    onChange={(e) => setArt(e.target.value)}
                   >
                     {ART_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -386,11 +373,11 @@ export default function SimulatorApp() {
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>경력</label>
+                  <label className={styles.label}>주 종목 경력</label>
                   <select
                     className={styles.select}
                     value={months}
-                    onChange={(e) => onManualChange(setMonths)(Number(e.target.value))}
+                    onChange={(e) => setMonths(Number(e.target.value))}
                   >
                     {MONTH_OPTIONS.map((m) => (
                       <option key={m} value={m}>
@@ -400,11 +387,11 @@ export default function SimulatorApp() {
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>빈도</label>
+                  <label className={styles.label}>주당 훈련 빈도</label>
                   <select
                     className={styles.select}
                     value={freq}
-                    onChange={(e) => onManualChange(setFreq)(Number(e.target.value))}
+                    onChange={(e) => setFreq(Number(e.target.value))}
                   >
                     {FREQ_OPTIONS.map((f) => (
                       <option key={f} value={f}>
@@ -414,8 +401,38 @@ export default function SimulatorApp() {
                   </select>
                 </div>
               </div>
-              {!backgroundValid && (
-                <span className={styles.err}>격투 이력을 입력하거나 직접 선택하세요</span>
+              <div className={styles.ddRow}>
+                <div className={styles.field}>
+                  <label className={styles.label}>보조 종목</label>
+                  <select
+                    className={styles.select}
+                    value={secondary}
+                    onChange={(e) => setSecondary(e.target.value)}
+                  >
+                    {ART_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.value === "none" ? "없음" : o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>보조 종목 경력</label>
+                  <select
+                    className={styles.select}
+                    value={secondaryMonths}
+                    onChange={(e) => setSecondaryMonths(Number(e.target.value))}
+                  >
+                    {MONTH_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {monthLabel(m)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {secondary !== "none" && secondaryMonths === 0 && (
+                <span className={styles.err}>보조 종목 경력을 선택하면 스탯·기술에 반영됩니다</span>
               )}
             </section>
 
@@ -474,7 +491,7 @@ export default function SimulatorApp() {
                   onClick={() => setSettingsOpen(!settingsOpen)}
                 >
                   시뮬레이션 설정
-                  <span className={`${styles.chev} ${settingsOpen ? styles.chevOpen : ""}`}>▼</span>
+                  <span className={`${styles.chev} ${settingsOpen ? styles.chevOpen : ""}`}>&#9660;</span>
                 </button>
                 {settingsOpen && (
                   <div className={styles.settingsBody}>
@@ -560,13 +577,19 @@ export default function SimulatorApp() {
             {simulating
               ? `시뮬레이션 중... ${progress}%`
               : "시뮬레이션 시작"}{" "}
-            <span className={styles.simArrow}>→</span>
+            <span className={styles.simArrow}>&rarr;</span>
+          </button>
+          <button
+            type="button"
+            className={styles.shareBtn}
+            disabled={!specValid}
+            onClick={onShare}
+          >
+            {copied ? "복사됨!" : "링크 복사"}
           </button>
           <p className={styles.statusCard}>
             {!specValid ? (
               <span className={styles.statusErr}>신체 스펙 값을 확인하세요</span>
-            ) : !backgroundValid ? (
-              <span className={styles.statusWarn}>격투 이력을 입력하거나 선택하세요</span>
             ) : opponent === null ? (
               <span className={styles.statusWarn}>상대를 선택하세요</span>
             ) : (
@@ -586,15 +609,6 @@ export default function SimulatorApp() {
                   style={{ width: `${progress}%` }}
                 />
               </div>
-            </div>
-          )}
-          {notice && (
-            <div className={styles.statusCard}>
-              <b>시뮬레이션 엔진 준비 중 (Phase 2)</b>
-              <br />
-              CombatResolver · DecisionEngine · SimulationEngine 구현 후
-              몬테카를로 승률, 전투 로그, 부위별 피해 히트맵이 표시됩니다.
-              현재는 스탯 프리뷰와 상대 설정까지 지원됩니다.
             </div>
           )}
         </div>

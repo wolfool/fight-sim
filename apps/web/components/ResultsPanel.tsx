@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { useState } from "react";
 import type { SimulationReport } from "@fight-sim/core/engine";
 import styles from "../app/page.module.css";
 import ReplaySection from "./ReplaySection";
@@ -54,6 +55,25 @@ export default function ResultsPanel({
     myRate >= oppRate + 10 ? `${myName} 우위` :
     oppRate >= myRate + 10 ? `${opponentLabel} 우위` : "백중세";
 
+  const [summaryCopied, setSummaryCopied] = useState(false);
+  const onCopySummary = async () => {
+    const top = finishes
+      .slice(0, 3)
+      .map(([type, count]) => `${FINISH_KOREAN[type] ?? type} ${count}회`)
+      .join(", ");
+    const text =
+      `[Fight Simulator] ${myName} vs ${opponentLabel} (${runs}회 시뮬레이션)\n` +
+      `승률 ${myRate}% vs ${oppRate}% (${verdict})\n` +
+      `종료 방식: ${top} · 평균 ${Math.floor(p.avgDuration / 60)}분 ${Math.round(p.avgDuration % 60)}초`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setSummaryCopied(true);
+      setTimeout(() => setSummaryCopied(false), 1500);
+    } catch {
+      /* 클립보드 미지원 무시 */
+    }
+  };
+
   return (
     <section className={styles.resultsCard}>
       <div className={styles.cardTitle}>
@@ -79,6 +99,9 @@ export default function ResultsPanel({
         <span className={styles.verdictScore}>
           {myName} <b>{myRate}%</b> vs <b>{oppRate}%</b> {opponentLabel}
         </span>
+        <button type="button" className={styles.copySummaryBtn} onClick={onCopySummary}>
+          {summaryCopied ? "복사됨!" : "요약 복사"}
+        </button>
       </div>
 
       <div className={styles.rateBar}>

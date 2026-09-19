@@ -1,4 +1,4 @@
-import { CoreStats, DurabilityProfile, Injury } from '../domain/fighter';
+﻿import { CoreStats, DurabilityProfile, Injury } from '../domain/fighter';
 import { BodyPartId, NaturalArmor } from '../domain/types';
 import { RuntimeTechnique } from './default-techniques';
 import { Rng } from './rng';
@@ -64,6 +64,7 @@ export function weibullFracture(pressureMPa: number, boneTensileMPa: number): nu
 
 export interface StrikeParams {
   technique: RuntimeTechnique;
+  timestamp?: number;
   attackerStats: CoreStats;
   attackerFatigue: number;
   attackerAdrenaline: number;
@@ -96,9 +97,9 @@ export interface StrikeOutcome {
 
 export function resolveStrike(p: StrikeParams): StrikeOutcome {
   const tech = p.technique;
-  const strengthScale = 0.5 + p.attackerStats.strength / 100;
+  const strengthScale = 0.5 + p.attackerStats.strength / 100 + p.attackerStats.technique * 0.15 / 100;
   const adrenalineScale = 1 + p.attackerAdrenaline / 300;
-  const fatigueScale = 1 - p.attackerFatigue * 0.35;
+  const fatigueScale = 1 - p.attackerFatigue * 0.25;
   const peakForceN = tech.biomechanics.peakForce.magnitude * strengthScale * adrenalineScale * fatigueScale;
 
   const pressureMPa = computePressureMPa(peakForceN, tech.biomechanics.contactArea);
@@ -141,7 +142,6 @@ export function resolveStrike(p: StrikeParams): StrikeOutcome {
   const bleedRate = tech.effects.bleed.rate * (fracture ? 2 : 1) * (1 - p.defenderStats.durability / 200);
 
   const injuries: Injury[] = [];
-  const now = 0;
   if (partDamage > 0.15 || fracture || organRuptured) {
     const severity: Injury['severity'] =
       partDamage >= 0.95 || organRuptured ? 'critical' :
@@ -152,13 +152,14 @@ export function resolveStrike(p: StrikeParams): StrikeOutcome {
       : isHead && concussionP > 0.5 ? 'concussion'
       : tech.effects.damage.damageType === 'sharp' || tech.effects.damage.damageType === 'piercing' ? 'laceration'
       : 'bruise';
+    const ts = p.timestamp ?? 0;
     injuries.push({
-      id: `inj_${targetPart}_${type}_${now}`,
+      id: `inj_${ts}_${targetPart}_${type}`,
       partId: targetPart,
       type,
       severity,
       functionalLoss: Math.min(1, partDamage * (organRuptured ? 1.5 : 1)),
-      timestamp: now,
+      timestamp: ts,
       description: `${tech.name} → ${targetPart} (${severity})`,
     });
   }

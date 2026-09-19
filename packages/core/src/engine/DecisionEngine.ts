@@ -1,4 +1,4 @@
-import { RuntimeFighterState } from './runtime-types';
+﻿import { RuntimeFighterState } from './runtime-types';
 import { RuntimeTechnique } from './default-techniques';
 import { Rng } from './rng';
 
@@ -41,6 +41,9 @@ export class DecisionEngine {
     const rageBoost = self.rage > 60 ? 1.3 : 1;
     const fearPenalty = self.fear > 60 ? 0.6 : 1;
 
+    const hunting = self.traits?.huntingStyle;
+    const cower = self.fear > 85 && self.health < 30;
+
     const candidates: Array<{ score: number; decision: EngineDecision }> = [];
 
     for (const tech of self.techniques) {
@@ -65,22 +68,36 @@ export class DecisionEngine {
       if (oppDowned && (tech.category === 'grapple_ground' || isChoke)) score *= 1.6;
       if (self.pain > 50) score *= 0.8;
 
-      candidates.push({ score: score * noise(), decision: { type: 'attack', technique: tech } });
+      if (!cower) {
+        if (hunting === 'ambush') {
+          if (distance > 1.6) score *= 0.5;
+          else score *= 1.4;
+        } else if (hunting === 'charge' || hunting === 'chase') {
+          if (distance > 1.2) score *= 1.2;
+        }
+        candidates.push({ score: score * noise(), decision: { type: 'attack', technique: tech } });
+      }
     }
 
     const threat = opp.action?.phase === 'windup' ? 1.5 : 0.5;
     const guardScore =
       (self.stats.composure / 100) * (0.4 + threat) * (0.6 + flightiness) *
-      (oppDowned ? 0.1 : 1) * noise();
+      (oppDowned ? 0.1 : 1) * (cower ? 2.5 : 1) * noise();
     candidates.push({ score: guardScore, decision: { type: 'defend', duration: 0.5 } });
 
     const advanceScore =
-      (0.3 + aggr * 0.7) * traitsAggr * (healthRatio < 0.2 ? 0.5 : 1) * noise();
+      (0.3 + aggr * 0.7) * traitsAggr *
+      (healthRatio < 0.2 ? 0.5 : 1) *
+      (distance < 0.55 ? 0.1 : 1) *
+      (hunting === 'charge' ? 1.8 : hunting === 'chase' ? 1.5 : hunting === 'ambush' && distance > 1.6 ? 0.6 : 1) *
+      noise();
     candidates.push({ score: advanceScore, decision: { type: 'move', dir: 1, duration: 0.3 } });
 
     const retreatScore =
-      (self.fear / 100) * 2 * (0.5 + flightiness) *
-      (healthRatio < 0.35 ? 1.6 : 0.7) * noise();
+      (self.fear / 100) * 1.2 * (0.3 + flightiness) *
+      (healthRatio < 0.35 ? 1.6 : 0.7) *
+      (cower ? 2.2 : hunting === 'charge' ? 0.3 : 1) *
+      noise();
     candidates.push({ score: retreatScore, decision: { type: 'move', dir: -1, duration: 0.4 } });
 
     const waitScore = 0.25 + self.fatigue * 0.5;

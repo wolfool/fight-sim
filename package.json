@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "fight-sim",
   "private": true,
   "scripts": {
@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "build:standalone": "node apps/standalone/build.mjs",
+    "deploy:pages": "node scripts/deploy-pages.mjs",
     "test": "turbo run test"
   },
   "devDependencies": {

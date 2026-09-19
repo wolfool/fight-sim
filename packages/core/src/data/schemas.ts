@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 import {
   BodyPartId,
   TechniqueCategory,
@@ -82,6 +82,8 @@ export const ParsedBackgroundSchema = z.object({
   trainingFrequency: z.number().int().positive().max(14),
   gymEnvironment: z.string().optional(),
   confidence: z.number().min(0).max(1),
+  secondaryArt: z.string().optional(),
+  secondaryExperienceMonths: z.number().int().nonnegative().optional(),
 });
 
 export const UserProfileSchema = z.object({

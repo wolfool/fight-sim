@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useMemo } from "react";
 import styles from "../app/page.module.css";
 import { deriveBodySpec } from "@fight-sim/core/data/body-segments";
 import {
   deriveCoreStats,
-  getRecommendedTechniques,
+  getCompositeTechniques,
 } from "@fight-sim/core/data/art-stats";
 import type {
   ParsedBackground,
@@ -105,11 +105,11 @@ export default function StatsPreview(props: StatsPreviewProps) {
   );
 
   const techniques = useMemo(() => {
-    if (!parsedBackground || parsedBackground.primaryArt === "default") return [];
-    return getRecommendedTechniques(
-      parsedBackground.primaryArt,
-      parsedBackground.experienceMonths
-    ).slice(0, 8);
+    if (!parsedBackground) return [];
+    if (parsedBackground.primaryArt === "default" && !parsedBackground.secondaryArt) {
+      return [];
+    }
+    return getCompositeTechniques(parsedBackground).slice(0, 10);
   }, [parsedBackground]);
 
   if (!body || !stats) {

@@ -1,4 +1,4 @@
-import { CoreStats, ParsedBackground } from '../domain/fighter';
+﻿import { CoreStats, ParsedBackground } from '../domain/fighter';
 
 // ============================================
 // 종목별 스탯 가중치 (문헌 기반)
@@ -275,12 +275,23 @@ export function deriveCoreStats(input: StatDerivationInput): CoreStats {
   // ===== 종목 가중치 (문헌 기반 상대적 강조도) =====
   // 복싱: Piercy 2017, 무에타이: Krause 2016, BJJ: Andreato 2017
   // 레슬링: Kraemer 2004, 유도: Franchini 2011, MMA: James 2016
-  const artWeight = (ART_STAT_WEIGHTS[parsedBackground.primaryArt] ?? ART_STAT_WEIGHTS.mma) as ArtStatWeights;
+  const primaryWeight = (ART_STAT_WEIGHTS[parsedBackground.primaryArt] ?? ART_STAT_WEIGHTS.mma) as ArtStatWeights;
+  const secArt = parsedBackground.secondaryArt;
+  const secMonths = parsedBackground.secondaryExperienceMonths ?? 0;
+  let artWeight: ArtStatWeights = { ...primaryWeight };
+  if (secArt && secMonths > 0) {
+    const secWeight = (ART_STAT_WEIGHTS[secArt] ?? ART_STAT_WEIGHTS.default) as ArtStatWeights;
+    const ratio = Math.min(0.4, (secMonths / Math.max(6, parsedBackground.experienceMonths + secMonths)) * 0.8);
+    (Object.keys(primaryWeight) as Array<keyof ArtStatWeights>).forEach((k) => {
+      artWeight[k] = primaryWeight[k] * (1 - ratio) + secWeight[k] * ratio;
+    });
+  }
   
   // ===== 수련 보정 (로그 스케일, diminishing returns) =====
   // 출처: Ericsson 1993 "Deliberate practice", Farrow 2008 "Expertise development"
   const expMonths = parsedBackground.experienceMonths;
-  const expFactor = Math.min(2.5, 1 + Math.log10(Math.max(1, expMonths)) * 0.35);
+  const expMonthsTotal = expMonths + (parsedBackground.secondaryExperienceMonths ?? 0);
+  const expFactor = Math.min(2.5, 1 + Math.log10(Math.max(1, expMonthsTotal)) * 0.35);
   
   // ===== 빈도 보정 (주당 횟수, 과훈련 구간 반영) =====
   // 출처: Halson 2014 "Monitoring training load", Impellizzeri 2004 "Training load"
@@ -337,11 +348,29 @@ export function deriveCoreStats(input: StatDerivationInput): CoreStats {
   };
 }
 
+export function getCompositeTechniques(parsedBackground: ParsedBackground): string[] {
+  const primary = getRecommendedTechniques(parsedBackground.primaryArt, parsedBackground.experienceMonths);
+  const secArt = parsedBackground.secondaryArt;
+  const secMonths = parsedBackground.secondaryExperienceMonths ?? 0;
+  if (!secArt || secMonths <= 0) return primary;
+  const secondary = getRecommendedTechniques(secArt, secMonths);
+  const seen = new Set(primary);
+  const out = [...primary];
+  for (const id of secondary) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
+
 // ============================================
 // 기술 추천 매핑 (종목/경력 기반)
 // ============================================
 
 export const ART_TECHNIQUE_MAP: Record<string, string[]> = {
+  default: ['jab', 'cross'],
   boxing: [
     'jab', 'cross', 'lead_hook', 'rear_hook', 'lead_uppercut', 'rear_uppercut',
     'body_jab', 'body_cross', 'slip', 'weave', 'parry', 'block_high', 'block_low',
@@ -364,6 +393,7 @@ export const ART_TECHNIQUE_MAP: Record<string, string[]> = {
   ],
   wrestling: [
     'double_leg', 'single_leg', 'high_crotch', 'low_single', 'blast_double',
+    'ground_and_pound',
     'fireman_carry', 'hip_toss', 'headlock_throw', 'snap_down', 'spin_behind',
     'front_headlock', 'go_behind', 'standup_escape', 'sit_out', 'switch',
     'granby_roll', 'peterson_roll', 'turk', 'cradle', 'half_nelson',
